@@ -1,3 +1,5 @@
+#NB: TCGA data can be assessed using tcgabiolink or xenobrowser.net
+
 ###################
 #Set work directory
 ###################
@@ -237,6 +239,29 @@ melanomaData_tmm_normalize <- cpm(dge, log = FALSE) %>% as.matrix.default()
 #View normalized count matrix
 #View(melanomaData_tmm_normalize)
 
+##############################
+#Normalization by vst in DEseq
+##############################
+# vst transform counts to be used in survival analysis ---------------
+countData <- melanoma.exp_mat %>% as.data.frame()
+colData <- new_mel_phenodata %>% as.data.frame()
+
+#instantiate DEseq object
+dds <- DESeqDataSetFromMatrix(countData = countData,
+                              colData = colData,
+                              design = ~ sample_type.samples)
+
+#Removing genes with sum total of 10 reads across all samples
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+
+#perform variance stabilizing transformation 
+dds <- vst(dds, blind = F)
+melanomaData_vst_normalize <- (assay(dds))
+
+#plot pca
+plotPCA(dds, intgroup = "sample_type.samples")
+
 #########################################
 #Exploratory analysis of Normalized count
 #########################################
@@ -248,6 +273,7 @@ random_samples <- sample(seq_len(ncol(melanoma.exp_mat)),42L)
 sample_cnt  <- melanoma.exp_mat[,random_samples]
 sample_tpm  <- melanoma.exp_mat_tpm[,random_samples]
 sample_tmm  <- melanomaData_tmm_normalize[,random_samples]
+sample_vst <- melanomaData_vst_normalize[,random_samples]
 
 #define plot labels
 x1 <- "log(1+TPM)"
@@ -269,11 +295,19 @@ boxplot(log(1+sample_tpm), las=2, ylab = y1)
 #tmm-normalized count mtx
 boxplot(log(1+sample_tmm), las=2, ylab = y2)
 
+#vst-normalized count mtx
+boxplot(log(1+sample_vst), las=2, ylab = y2)
+
+##################################################################################################
+### From our exploratory analysis both edgeR and vst normalization work best so either can be used
+### NB: for the sake of this work shop we will proceed with vst transformed expression matrix
+##################################################################################################
+
 ###############################################
 #subset gene of interests for survival analysis
 ###############################################
 #subset TP53, MDM2, & BCL6
-survival_genes <- melanomaData_tmm_normalize[rownames(melanomaData_tmm_normalize) %in% c("TP53", "MDM2", "BCL6"),]
+survival_genes <- melanomaData_vst_normalize[rownames(melanomaData_vst_normalize) %in% c("TP53", "MDM2", "BCL6"),]
 
 #transpose survival_genes dataframe
 survival_genes <- as.data.frame(t(survival_genes))
@@ -324,3 +358,9 @@ ggsurvplot(surv.fit, data = surv.cat, risk.table = F, conf.int = T, surv.median.
 surv.fit <- survfit(Surv(time, event) ~BCL6, data = surv.cat)
 ggsurvplot(surv.fit, data = surv.cat, risk.table = F, conf.int = T, surv.median.line = "hv",
            pval = T)
+
+
+
+
+
+
